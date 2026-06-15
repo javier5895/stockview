@@ -34,7 +34,9 @@ const FEATURES = [
   { label: 'Markets & Sectors pages',     free: true,  pro: true },
 ]
 
-const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID
+const PAYPAL_CLIENT_ID    = import.meta.env.VITE_PAYPAL_CLIENT_ID
+const PAYPAL_PLAN_MONTHLY = import.meta.env.VITE_PAYPAL_PLAN_MONTHLY
+const PAYPAL_PLAN_ANNUAL  = import.meta.env.VITE_PAYPAL_PLAN_ANNUAL
 
 function Check({ yes }) {
   if (yes) return (
@@ -84,16 +86,15 @@ export default function PricingModal({ user, subscription, onClose }) {
 
     window.paypal.Buttons({
       style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'subscribe' },
-      createSubscription: async () => {
+      createSubscription: (data, actions) => {
         setError(null)
-        const res = await fetch(`${API_BASE}/api/billing/paypal/create-subscription`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid: user.uid, email: user.email, planId: selected }),
+        const planId = selected === 'monthly' ? PAYPAL_PLAN_MONTHLY : PAYPAL_PLAN_ANNUAL
+        return actions.subscription.create({
+          plan_id:   planId,
+          custom_id: user.uid,
+          subscriber: { email_address: user.email || '' },
+          application_context: { shipping_preference: 'NO_SHIPPING' },
         })
-        if (!res.ok) throw new Error((await res.json()).detail ?? 'Error')
-        const { subscriptionId } = await res.json()
-        return subscriptionId
       },
       onApprove: async (data) => {
         setLoading(true)

@@ -14,6 +14,7 @@ import pandas as pd
 import requests as _req
 import yfinance as yf
 from fastapi import APIRouter, FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="StockView API")

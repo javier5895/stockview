@@ -70,11 +70,15 @@ export default function AuthPage({ dark }) {
         await signInEmail(email, password)
       } else {
         const cred = await signUpEmail(email, password)
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          email: cred.user.email,
-          subscriptionStatus: 'free',
-          createdAt: serverTimestamp(),
-        })
+        try {
+          await setDoc(doc(db, 'users', cred.user.uid), {
+            email: cred.user.email,
+            subscriptionStatus: 'free',
+            createdAt: serverTimestamp(),
+          })
+        } catch (fsErr) {
+          console.error('Firestore setDoc failed:', fsErr)
+        }
         setInfo('Account created! You are now logged in.')
       }
     } catch (err) {

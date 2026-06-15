@@ -12,7 +12,7 @@ const STMT_MAP  = {
 }
 // Primary metric (first bold row) to chart per statement
 const CHART_ROW = {
-  'Income Statement': 'Total Revenue',
+  'Income Statement': 'Revenue',
   'Balance Sheet':    'Total Assets',
   'Cash Flow':        'Operating Cash Flow',
 }
@@ -153,12 +153,19 @@ function FinChart({ data, subTab, dark, unit }) {
 
 /* ─── Financial table ───────────────────────────────────────────── */
 function FinTable({ data, unit }) {
+  // Track which group IDs are collapsed (start all expanded)
+  const [collapsed, setCollapsed] = useState({})
+
+  function toggle(groupId) {
+    setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }))
+  }
+
   return (
     <div className="fin-table-wrap">
       <table className="fin-table">
         <thead>
           <tr>
-            <th className="fin-th-label" />
+            <th className="fin-th-label">Breakdown</th>
             {data.periods.map(p => (
               <th key={p} className="fin-th-val">{p}</th>
             ))}
@@ -166,16 +173,59 @@ function FinTable({ data, unit }) {
         </thead>
         <tbody>
           {data.rows.map((row, i) => {
-            const isEps = row.label.startsWith('EPS')
+            // Hide child rows if their parent group is collapsed
+            if (row.parentGroup && collapsed[row.parentGroup]) return null
+
+            // Growth rows always show pre-formatted "% string" — never reformat
+            const isGrowth = !!row.isGrowthRow
+            // Per-share rows (EPS + balance sheet + cash flow per-share) — show pre-formatted $X.XX
+            const isEps    = !isGrowth && (
+              row.label === 'EPS (Basic)' || row.label === 'EPS (Diluted)' ||
+              row.label === 'Net Cash Per Share' || row.label === 'Book Value Per Share' ||
+              row.label === 'Tangible Book Value Per Share' ||
+              row.label === 'Free Cash Flow Per Share'
+            )
+            // Only share-count rows — not "Shares Change (YoY)"
+            const isShares = !isGrowth && row.label.includes('Shares') && !row.label.includes('Change')
+            const isSection = !!row.groupId
+
             return (
-              <tr key={i} className={`fin-tr${row.bold ? ' fin-tr--bold' : ''}`}>
-                <td className={`fin-td-label${row.indent ? ' fin-td--indent' : ''}`}>
+              <tr
+                key={i}
+                className={[
+                  'fin-tr',
+                  row.bold    ? 'fin-tr--bold'    : '',
+                  isSection   ? 'fin-tr--section' : '',
+                  row.parentGroup ? 'fin-tr--child' : '',
+                  isGrowth    ? 'fin-tr--growth'  : '',
+                ].join(' ')}
+              >
+                <td
+                  className={`fin-td-label${row.indent ? ' fin-td--indent' : ''}`}
+                  onClick={isSection ? () => toggle(row.groupId) : undefined}
+                  style={isSection ? { cursor: 'pointer', userSelect: 'none' } : undefined}
+                >
+                  {isSection && (
+                    <span className="fin-toggle-icon">
+                      {collapsed[row.groupId] ? '›' : '∨'}
+                    </span>
+                  )}
                   {row.label}
                 </td>
                 {(row.raw ?? row.values).map((rawVal, j) => {
-                  // 'auto' or EPS rows: use pre-formatted backend string
-                  // any other unit: re-format from raw number
-                  const displayed = (unit === 'auto' || isEps)
+                  // Growth rows: show pre-formatted value, colour green/red
+                  if (isGrowth) {
+                    const v = row.values?.[j] ?? '—'
+                    const isPos = typeof v === 'string' && v.startsWith('+')
+                    const isNegGrow = typeof v === 'string' && v.startsWith('-')
+                    return (
+                      <td key={j} className="fin-td-val fin-td-growth"
+                        style={{ color: isPos ? '#16a34a' : isNegGrow ? '#dc2626' : undefined }}>
+                        {v}
+                      </td>
+                    )
+                  }
+                  const displayed = (unit === 'auto' || isEps || isShares)
                     ? (row.values?.[j] ?? '—')
                     : fmtFinUnit(rawVal, isEps, unit)
                   const isNeg = typeof displayed === 'string' && displayed.startsWith('(')
@@ -236,23 +286,39 @@ function RatiosView({ ticker, dark, reversed }) {
                 </tr>
               </thead>
               <tbody>
-                {sec.rows.map(row => (
-                  <tr key={row.label} className="fin-tr">
-                    <td className="fin-td-label">{row.label}</td>
-                    {(row.values ?? []).map((v, j) => {
-                      const isNeg = typeof v === 'string' && v.startsWith('(')
-                      return (
-                        <td
-                          key={j}
-                          className="fin-td-val"
-                          style={{ color: isNeg ? '#dc2626' : undefined }}
-                        >
-                          {v}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                {sec.rows.map(row => {
+                  const isGrowth = !!row.isGrowthRow
+                  return (
+                    <tr key={row.label} className={[
+                      'fin-tr',
+                      row.bold    ? 'fin-tr--bold'   : '',
+                      isGrowth    ? 'fin-tr--growth'  : '',
+                    ].join(' ')}>
+                      <td className={`fin-td-label${row.indent ? ' fin-td--indent' : ''}`}>
+                        {row.label}
+                      </td>
+                      {(row.values ?? []).map((v, j) => {
+                        if (isGrowth) {
+                          const isPos = typeof v === 'string' && v.startsWith('+')
+                          const isNegGrow = typeof v === 'string' && v.startsWith('-')
+                          return (
+                            <td key={j} className="fin-td-val fin-td-growth"
+                              style={{ color: isPos ? '#16a34a' : isNegGrow ? '#dc2626' : undefined }}>
+                              {v}
+                            </td>
+                          )
+                        }
+                        const isNeg = typeof v === 'string' && v.startsWith('(')
+                        return (
+                          <td key={j} className="fin-td-val"
+                            style={{ color: isNeg ? '#dc2626' : undefined }}>
+                            {v}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

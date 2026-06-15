@@ -1,4 +1,21 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Component } from 'react'
+
+class TabErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={{ padding: 32, color: '#ef4444', fontFamily: 'monospace', fontSize: 13, background: 'var(--surface2)', borderRadius: 12 }}>
+          <strong>Error in {this.props.tab} tab:</strong>
+          <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{this.state.err.message}</pre>
+          <pre style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{this.state.err.stack}</pre>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import StockChart from '../components/StockChart'
 import SnowflakePanel from '../components/SnowflakePanel'
 import CompetitorsPanel from '../components/CompetitorsPanel'
@@ -6,6 +23,13 @@ import AboutPanel from '../components/AboutPanel'
 import FundamentalsPanel from '../components/FundamentalsPanel'
 import ValuationPanel from '../components/ValuationPanel'
 import FinancialsPanel from '../components/FinancialsPanel'
+import ProfitabilityPanel from '../components/ProfitabilityPanel'
+import GrowthPanel from '../components/GrowthPanel'
+import HealthPanel from '../components/HealthPanel'
+import EfficiencyPanel from '../components/EfficiencyPanel'
+import RevenueSegmentsPanel from '../components/RevenueSegmentsPanel'
+import UpgradeBanner from '../components/UpgradeBanner'
+import FavoriteButton from '../components/FavoriteButton'
 import { getStock, getPeriodData, getKeyStats, PERIODS } from '../mockData'
 
 const RETURN_PERIODS = [
@@ -69,20 +93,28 @@ function InfoRowRange({ label, low, high, current }) {
 }
 
 /* ─── Tab Bar ────────────────────────────────────────────────── */
-const TABS = ['Summary', 'Financials', 'Key Metrics', 'Valuation', 'News', 'Dividends']
+const TABS = ['Summary', 'Financials', 'Valuation', 'Profitability', 'Growth', 'Health', 'Efficiency', 'Rev. Seg.']
 
-function TabBar({ active, onChange }) {
+function TabBar({ active, onChange, isPro }) {
   return (
     <div className="stock-tabs">
-      {TABS.map(t => (
-        <button
-          key={t}
-          className={`stock-tab-btn ${active === t ? 'active' : ''}`}
-          onClick={() => onChange(t)}
-        >
-          {t}
-        </button>
-      ))}
+      {TABS.map(t => {
+        const locked = PRO_TABS.has(t) && !isPro
+        return (
+          <button
+            key={t}
+            className={`stock-tab-btn ${active === t ? 'active' : ''} ${locked ? 'tab-locked' : ''}`}
+            onClick={() => onChange(t)}
+          >
+            {t}
+            {locked && (
+              <svg className="tab-lock-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -150,7 +182,10 @@ function MetricsPanel({ stats }) {
 }
 
 /* ─── Stock Page ─────────────────────────────────────────────── */
-export default function StockPage({ ticker, dark, onBack, onNavigate }) {
+const PRO_TABS = new Set(['Valuation', 'Profitability', 'Growth', 'Health', 'Efficiency', 'Rev. Seg.'])
+
+export default function StockPage({ ticker, dark, onBack, onNavigate, user, favorites = new Set(), subscription, onUpgrade }) {
+  const isPro = subscription?.status === 'active'
   const [period, setPeriod] = useState('1D')
   const [activeTab, setActiveTab] = useState('Summary')
   const [realChartData, setRealChartData] = useState(null)
@@ -273,23 +308,43 @@ export default function StockPage({ ticker, dark, onBack, onNavigate }) {
       </button>
 
       {/* Company name + badges */}
-      <div className="sp-header">
-        <div>
-          <div className="company-name-row">
-            <h2 className="company-name">{stock.name}</h2>
-            <span className="ticker-badge">{stock.ticker}</span>
-            <span className="exchange-badge">{stock.exchange}</span>
+      {(() => {
+        const displayName     = realAbout?.name     ?? stock.name
+        const displaySector   = realAbout?.sector   ?? stock.sector
+        const displayExchange = realAbout?.exchange ?? stock.exchange
+        const displayMarketCap = realAbout?.marketCap ?? realQuote?.marketCap ?? stock.marketCap
+        return (
+          <div className="sp-header">
+            {realAbout?.logo && (
+              <img
+                src={realAbout.logo}
+                alt={displayName}
+                className="sp-company-logo"
+                onError={e => { e.target.style.display = 'none' }}
+              />
+            )}
+            <div>
+              <div className="company-name-row">
+                <h2 className="company-name">{displayName}</h2>
+                <span className="ticker-badge">{ticker.toUpperCase()}</span>
+                {displayExchange && <span className="exchange-badge">{displayExchange}</span>}
+                <FavoriteButton user={user} ticker={ticker} name={displayName} favorites={favorites} />
+              </div>
+              <p className="company-meta">
+                {displaySector && <>{displaySector}</>}
+                {displayMarketCap && <>{displaySector ? ' · ' : ''}Market Cap ${displayMarketCap}</>}
+              </p>
+            </div>
           </div>
-          <p className="company-meta">{stock.sector} · Market Cap {stock.currency} {stock.marketCap}</p>
-        </div>
-      </div>
+        )
+      })()}
 
       {/* Tab bar */}
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar active={activeTab} onChange={setActiveTab} isPro={isPro} />
 
       {/* Single-column layout */}
       <div className="sp-left">
-          {activeTab !== 'Valuation' && activeTab !== 'Financials' && <div className="card sp-chart-card">
+          {activeTab === 'Summary' && <div className="card sp-chart-card">
             {/* Price */}
             <div className="price-block">
               <div className="price-row">
@@ -331,7 +386,12 @@ export default function StockPage({ ticker, dark, onBack, onNavigate }) {
             </div>
           </div>}
 
-          {activeTab === 'Valuation' ? (
+          {PRO_TABS.has(activeTab) && !isPro ? (
+
+            /* ── Upgrade gate ─────────────────────────────── */
+            <UpgradeBanner onUpgrade={onUpgrade} />
+
+          ) : activeTab === 'Valuation' ? (
 
             /* ── Valuation Tab ────────────────────────────── */
             <ValuationPanel ticker={ticker} dark={dark} />
@@ -340,6 +400,33 @@ export default function StockPage({ ticker, dark, onBack, onNavigate }) {
 
             /* ── Financials Tab ───────────────────────────── */
             <FinancialsPanel ticker={ticker} dark={dark} />
+
+          ) : activeTab === 'Profitability' ? (
+
+            /* ── Profitability Tab ────────────────────────── */
+            <ProfitabilityPanel ticker={ticker} dark={dark} />
+
+          ) : activeTab === 'Growth' ? (
+
+            /* ── Growth Tab ───────────────────────────────── */
+            <GrowthPanel ticker={ticker} dark={dark} />
+
+          ) : activeTab === 'Health' ? (
+
+            /* ── Health Tab ───────────────────────────────── */
+            <HealthPanel ticker={ticker} />
+
+          ) : activeTab === 'Efficiency' ? (
+
+            /* ── Efficiency Tab ───────────────────────────── */
+            <EfficiencyPanel ticker={ticker} />
+
+          ) : activeTab === 'Rev. Seg.' ? (
+
+            /* ── Revenue Tab ──────────────────────────────── */
+            <TabErrorBoundary tab="Revenue">
+              <RevenueSegmentsPanel ticker={ticker} />
+            </TabErrorBoundary>
 
           ) : (
 
@@ -381,6 +468,7 @@ export default function StockPage({ ticker, dark, onBack, onNavigate }) {
                 dark={dark}
                 onSelect={onNavigate}
               />
+
             </>
 
           )}

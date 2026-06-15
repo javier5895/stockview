@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 const PLANS = [
   {
     id: 'monthly',
@@ -57,7 +59,7 @@ export default function PricingModal({ user, subscription, onClose }) {
     if (!user) return
     setLoading(true); setError(null)
     try {
-      const res = await fetch('/api/billing/create-checkout-session', {
+      const res = await fetch(`${API_BASE}/api/billing/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -80,7 +82,7 @@ export default function PricingModal({ user, subscription, onClose }) {
     if (!subscription?.customerId) return
     setLoading(true); setError(null)
     try {
-      const res = await fetch('/api/billing/customer-portal', {
+      const res = await fetch(`${API_BASE}/api/billing/customer-portal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId: subscription.customerId }),

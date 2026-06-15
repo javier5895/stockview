@@ -13,7 +13,7 @@ import {
   onAuthStateChanged,
   updatePassword,
 } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 
 // ─── Paste your Firebase project config here ──────────────────────────────
 // console.firebase.google.com → your project → Project Settings → Your apps
@@ -38,7 +38,20 @@ export const signUpEmail      = (email, pw) => createUserWithEmailAndPassword(au
 export const resetPassword        = (email) => sendPasswordResetEmail(auth, email)
 export const updateUserPassword   = (newPw)  => updatePassword(auth.currentUser, newPw)
 export const logOut           = () => signOut(auth)
-export const onAuthChange     = (cb) => onAuthStateChanged(auth, cb)
+export const onAuthChange = (cb) => onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const ref = doc(db, 'users', user.uid)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email: user.email,
+        subscriptionStatus: 'free',
+        createdAt: serverTimestamp(),
+      })
+    }
+  }
+  cb(user)
+})
 
 // Magic link (email code)
 const ACTION_CODE_SETTINGS = {

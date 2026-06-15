@@ -5232,12 +5232,16 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
         raise HTTPException(400, str(e))
 
     etype = event["type"]
-    data  = event["data"]["object"]
+    obj   = event["data"]["object"]
+    # StripeObject doesn't support .get() — convert to plain dict for safe access
+    data  = dict(obj) if not isinstance(obj, dict) else obj
 
     if etype == "checkout.session.completed":
-        uid         = data.get("metadata", {}).get("firebaseUid")
+        metadata    = data.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = dict(metadata)
+        uid         = metadata.get("firebaseUid")
         customer_id = data.get("customer")
-        # Store customerId on the Firestore user so we can look them up later
         fs = _fs_client()
         if fs and uid:
             fs.collection("users").document(uid).set(
@@ -5247,9 +5251,17 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
 
     elif etype in ("customer.subscription.updated", "customer.subscription.created"):
         customer_id = data.get("customer")
-        status      = data.get("status")          # active, past_due, trialing, etc.
-        plan_id     = data.get("items", {}).get("data", [{}])[0].get("price", {}).get("id")
-        # Map Stripe statuses → our simplified set
+        status      = data.get("status")
+        try:
+            items_obj = data.get("items") or {}
+            items_data = dict(items_obj) if not isinstance(items_obj, dict) else items_obj
+            first_item = (items_data.get("data") or [{}])[0]
+            first_item = dict(first_item) if not isinstance(first_item, dict) else first_item
+            price_obj = first_item.get("price") or {}
+            price_obj = dict(price_obj) if not isinstance(price_obj, dict) else price_obj
+            plan_id = price_obj.get("id")
+        except Exception:
+            plan_id = None
         mapped = "active" if status in ("active", "trialing") else "past_due" if status == "past_due" else "cancelled"
         _update_user_subscription(customer_id, mapped, plan_id)
 

@@ -89,8 +89,19 @@ export default function AuthPage({ dark }) {
 
   async function handleGoogle() {
     setLoading(true); reset()
-    try { await signInGoogle() }
-    catch (err) { if (err.code !== 'auth/popup-closed-by-user') setError(friendlyError(err.code)) }
+    try {
+      const cred = await signInGoogle()
+      if (cred?.user) {
+        const ref = doc(db, 'users', cred.user.uid)
+        await setDoc(ref, {
+          email: cred.user.email,
+          subscriptionStatus: 'free',
+          createdAt: serverTimestamp(),
+        }, { merge: true })
+      }
+    } catch (err) {
+      if (err.code !== 'auth/popup-closed-by-user') setError(friendlyError(err.code))
+    }
     setLoading(false)
   }
 

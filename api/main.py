@@ -5227,14 +5227,14 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
 
     payload = await request.body()
     try:
-        event = stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
+        stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
         raise HTTPException(400, str(e))
 
-    etype = event["type"]
-    obj   = event["data"]["object"]
-    # StripeObject doesn't support .get() — convert to plain dict for safe access
-    data  = dict(obj) if not isinstance(obj, dict) else obj
+    import json as _json
+    event_dict = _json.loads(payload)
+    etype = event_dict["type"]
+    data  = event_dict["data"]["object"]
 
     if etype == "checkout.session.completed":
         metadata    = data.get("metadata") or {}

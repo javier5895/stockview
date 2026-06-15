@@ -209,40 +209,15 @@ export default function PricingModal({ user, subscription, onClose }) {
             </div>
             <p className="pricing-plan-desc">{plan.desc}</p>
 
-            {!user ? (
-              <p className="pricing-login-note">Sign in first to subscribe.</p>
-            ) : (
-              <>
-                {hasPayPal && hasStripe && (
-                  <div className="pricing-pay-tabs">
-                    <button
-                      className={`pricing-pay-tab ${payMethod === 'paypal' ? 'active' : ''}`}
-                      onClick={() => setPayMethod('paypal')}>
-                      PayPal
-                    </button>
-                    <button
-                      className={`pricing-pay-tab ${payMethod === 'stripe' ? 'active' : ''}`}
-                      onClick={() => setPayMethod('stripe')}>
-                      Card
-                    </button>
-                  </div>
-                )}
-
-                {(payMethod === 'paypal' || !hasStripe) && hasPayPal && (
-                  <div ref={paypalRef} className="pricing-paypal-container" />
-                )}
-
-                {(payMethod === 'stripe' || !hasPayPal) && hasStripe && (
-                  <button className="pricing-cta" onClick={handleStripeSubscribe} disabled={loading}>
-                    {loading ? 'Redirecting…' : `Pay with Card — ${plan.price}${plan.period}`}
-                  </button>
-                )}
-
-                {!hasPayPal && !hasStripe && (
-                  <p className="pricing-login-note" style={{ color: '#f59e0b' }}>Payment not configured yet.</p>
-                )}
-              </>
-            )}
+            <a
+              className="pricing-cta"
+              href="mailto:javierramirez.us@gmail.com?subject=StockView Pro — Subscribe&body=Hi, I'd like to subscribe to StockView Pro."
+              style={{ textDecoration: 'none', textAlign: 'center' }}>
+              Contact us to subscribe →
+            </a>
+            <p className="pricing-login-note" style={{ marginTop: 8 }}>
+              We'll set up your account within 24 hours.
+            </p>
           </>
         )}
 

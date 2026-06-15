@@ -5119,6 +5119,12 @@ PRICE_MONTHLY          = os.environ.get("STRIPE_PRICE_MONTHLY", "")
 PRICE_ANNUAL           = os.environ.get("STRIPE_PRICE_ANNUAL", "")
 APP_URL                = os.environ.get("APP_URL", "http://localhost:5181")
 
+PAYPAL_CLIENT_ID       = os.environ.get("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET   = os.environ.get("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_PLAN_MONTHLY    = os.environ.get("PAYPAL_PLAN_MONTHLY", "")
+PAYPAL_PLAN_ANNUAL     = os.environ.get("PAYPAL_PLAN_ANNUAL", "")
+PAYPAL_API_BASE        = "https://api-m.paypal.com"
+
 # Firebase Admin SDK (needed only for webhook to write Firestore server-side)
 _firebase_admin_ready = False
 try:
@@ -5268,6 +5274,116 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     elif etype == "customer.subscription.deleted":
         customer_id = data.get("customer")
         _update_user_subscription(customer_id, "cancelled")
+
+    return JSONResponse({"received": True})
+
+
+# ── PayPal helpers ────────────────────────────────────────────────────────────
+
+def _paypal_token() -> str:
+    import base64
+    creds = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
+    r = requests.post(
+        f"{PAYPAL_API_BASE}/v1/oauth2/token",
+        headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"},
+        data="grant_type=client_credentials",
+    )
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+# ── PayPal endpoints ──────────────────────────────────────────────────────────
+
+class PayPalSubscriptionBody(BaseModel):
+    uid:    str
+    email:  Optional[str] = None
+    planId: str           # "monthly" or "annual"
+
+@router.post("/billing/paypal/create-subscription")
+async def paypal_create_subscription(body: PayPalSubscriptionBody):
+    if not PAYPAL_CLIENT_ID:
+        raise HTTPException(503, "PayPal not configured")
+    plan_id = PAYPAL_PLAN_MONTHLY if body.planId == "monthly" else PAYPAL_PLAN_ANNUAL
+    if not plan_id:
+        raise HTTPException(503, "PayPal plan not configured")
+    try:
+        token = _paypal_token()
+        r = requests.post(
+            f"{PAYPAL_API_BASE}/v1/billing/subscriptions",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={
+                "plan_id": plan_id,
+                "custom_id": body.uid,
+                "subscriber": {"email_address": body.email} if body.email else {},
+                "application_context": {
+                    "return_url": f"{APP_URL}/#billing-success",
+                    "cancel_url": f"{APP_URL}/#billing-cancel",
+                    "shipping_preference": "NO_SHIPPING",
+                    "user_action": "SUBSCRIBE_NOW",
+                },
+            },
+        )
+        r.raise_for_status()
+        return {"subscriptionId": r.json()["id"]}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class PayPalActivateBody(BaseModel):
+    subscriptionId: str
+    uid:            str
+
+@router.post("/billing/paypal/activate")
+async def paypal_activate(body: PayPalActivateBody):
+    """Called from frontend onApprove for immediate Pro unlock."""
+    if not PAYPAL_CLIENT_ID:
+        raise HTTPException(503, "PayPal not configured")
+    try:
+        token = _paypal_token()
+        r = requests.get(
+            f"{PAYPAL_API_BASE}/v1/billing/subscriptions/{body.subscriptionId}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        r.raise_for_status()
+        status = r.json().get("status", "")
+        if status in ("ACTIVE", "APPROVED"):
+            fs = _fs_client()
+            if fs and body.uid:
+                fs.collection("users").document(body.uid).set(
+                    {"subscriptionStatus": "active", "paypalSubscriptionId": body.subscriptionId},
+                    merge=True,
+                )
+        return {"status": status}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/billing/paypal/webhook")
+async def paypal_webhook(request: Request):
+    import json as _json
+    body = await request.body()
+    try:
+        event = _json.loads(body)
+    except Exception:
+        raise HTTPException(400, "Invalid JSON")
+
+    event_type = event.get("event_type", "")
+    resource   = event.get("resource", {})
+    uid        = resource.get("custom_id") or resource.get("subscriber", {}).get("payer_id")
+
+    fs = _fs_client()
+    if fs and uid:
+        if event_type in ("BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.RENEWED"):
+            fs.collection("users").document(uid).set(
+                {"subscriptionStatus": "active", "paypalSubscriptionId": resource.get("id")},
+                merge=True,
+            )
+        elif event_type in ("BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED",
+                            "BILLING.SUBSCRIPTION.SUSPENDED"):
+            fs.collection("users").document(uid).set(
+                {"subscriptionStatus": "cancelled"},
+                merge=True,
+            )
 
     return JSONResponse({"received": True})
 

@@ -3,6 +3,8 @@ import {
   signInEmail, signUpEmail, signInGoogle,
   resetPassword, sendMagicLink,
 } from '../lib/firebase'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../lib/firebase'
 
 /* ─── Icons ─────────────────────────────────────────────────── */
 function EyeOff() {
@@ -67,7 +69,12 @@ export default function AuthPage({ dark }) {
       if (mode === 'login') {
         await signInEmail(email, password)
       } else {
-        await signUpEmail(email, password)
+        const cred = await signUpEmail(email, password)
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          email: cred.user.email,
+          subscriptionStatus: 'free',
+          createdAt: serverTimestamp(),
+        })
         setInfo('Account created! You are now logged in.')
       }
     } catch (err) {

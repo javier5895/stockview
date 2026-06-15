@@ -4,4 +4,6 @@ uvicorn[standard]
 yfinance
 pandas
 requests
-
+stripe
+firebase-admin
+python-dotenv

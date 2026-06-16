@@ -185,7 +185,7 @@ function MetricsPanel({ stats }) {
 const PRO_TABS = new Set(['Valuation', 'Profitability', 'Growth', 'Health', 'Efficiency', 'Rev. Seg.'])
 
 export default function StockPage({ ticker, dark, onBack, onNavigate, user, favorites = new Set(), subscription, onUpgrade }) {
-  const isPro = subscription?.status === 'active'
+  const isPro = true // billing paused — all tabs free for now
   const [period, setPeriod] = useState('1D')
   const [activeTab, setActiveTab] = useState('Summary')
   const [realChartData, setRealChartData] = useState(null)

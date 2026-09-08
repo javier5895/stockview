@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://stockview-production-3920.up.railway.app/api/:path*"
+      "destination": "https://stockview-3vav.onrender.com/api/:path*"
     }
   ]
 }
